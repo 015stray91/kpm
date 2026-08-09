@@ -1,4 +1,4 @@
-name: Build CI
+name: Build SUSFS KPM
 
 on:
   push:
@@ -18,52 +18,65 @@ on:
         default: '23040200'
 
 jobs:
-  Build-on-Ubuntu:
+  Build-KPM:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    env:
-      TZ: UTC-8
+    # Using an Android/Kernel compilation image simplifies toolchain configurations
+    container:
+      image: zclkkk/archlinux-android-build:latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: 'recursive'
-          fetch-depth: 1
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        submodules: 'recursive'
+        fetch-depth: 1
 
-      - name: Update system and install dependencies
-        run: |
-          sudo apt update -y
-          sudo apt install llvm -y
+    - name: Set Environment & Toolchain Paths
+      run: |
+        echo "ARCH=arm64" >> $GITHUB_ENV
+        # Setting up cross compile for your arm64-v8a architecture target
+        echo "CROSS_COMPILE=aarch64-linux-gnu-" >> $GITHUB_ENV
 
-      - name: Build kpm
-        run: |
-          mkdir target
+    - name: Compile SUSFS KPM
+      run: |
+        mkdir -p target
+        
+        # Loop through src directory to build the specific KPM object file
+        # This replaces the raw 'mv *.kpm' with explicit target output rules
+        for dir in $(ls -d src/*/); do
+          if [ -f "${dir}Makefile" ]; then
+            echo "Compiling code in module directory: ${dir}"
+            
+            # Pass your specific GKI kernel information down into the build loop
+            make -C ${dir} ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- KERNEL_VERSION=5.10.218
+            
+            # Relocate compiled KPM binaries cleanly into target folder
+            if [ -f ${dir}*.kpm ]; then
+              mv ${dir}*.kpm target/susfs_5.10.218_patch.kpm
+            fi
+          fi
+        done
 
-          for dir in $(ls -d src/*/); do
-            make -C ${dir}
-            mv ${dir}*.kpm target
-          done
+    - name: Upload KPM Build Artifact
+      if: success()
+      uses: lzghzr/upload-artifact@405e6269d5b1feb22bf2a044deb7950596bed6da
+      with:
+        path: "target/susfs_5.10.218_patch.kpm"
+        artifact-per-file: false
+        artifact-name-rule: "susfs-ksu-kpm"
 
-      - name: Upload artifact
-        if: success()
-        uses: lzghzr/upload-artifact@405e6269d5b1feb22bf2a044deb7950596bed6da
-        with:
-          path: "target/*.kpm"
-          artifact-per-file: true
-          artifact-name-rule: ${name}
-
-      - name: Upload release
-        if: github.event.inputs.release == 'true' && success() && !cancelled()
-        uses: ncipollo/release-action@v1.14.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.event.inputs.version }}
-          tag: ${{ github.event.inputs.version }}
-          body: This release is built by github-action.
-          artifacts: "target/*.kpm"
-          allowUpdates: true
-          makeLatest: true
-          omitBodyDuringUpdate: true
-          replacesArtifacts: true
+    - name: Publish Release Output
+      if: github.event.inputs.release == 'true' && success() && !cancelled()
+      uses: ncipollo/release-action@v1.14.0
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        name: "SUSFS KPM [${{ github.event.inputs.version }}]"
+        tag: ${{ github.event.inputs.version }}
+        body: "Generated SUSFS kernel hook module for 5.10.218 GKI Kernels via KPatch framework."
+        artifacts: "target/susfs_5.10.218_patch.kpm"
+        allowUpdates: true
+        makeLatest: true
+        omitBodyDuringUpdate: true
+        replacesArtifacts: true
