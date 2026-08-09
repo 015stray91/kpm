@@ -1,0 +1,53 @@
+name: Build Isolated GKI KPM Module
+
+on:
+  push:
+    paths:
+      - ".github/workflows/build-kpm.yml"
+      - "src/**"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Module Build Version'
+        required: false
+        default: '23040200'
+
+jobs:
+  Build-GKI-KPM:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout Code Map
+      uses: actions/checkout@v4
+      with:
+        submodules: 'recursive'
+
+    - name: Set up Android NDK Cross-Compiler
+      uses: nndess/setup-ndk@v1
+      with:
+        ndk-version: r25c # Essential toolchain version for matching standard GKI targets
+
+    - name: Compile Standalone VFS Hook Module
+      run: |
+        mkdir -p target
+        
+        # Navigate to the folder containing your KernelPatch / APatch module logic
+        cd src/
+        
+        # Cross-compiles the assembly instructions into the target .kpm format.
+        # This builds the redirect structures targeting your kernel functions.
+        make ARCH=arm64 KERNEL_VERSION=5.10.218
+        
+        # Relocate the completed injection module to our output staging folder
+        mv *.kpm ../target/susfs_isolated_hooks.kpm
+
+    - name: Upload Dynamic Installer Package
+      if: success()
+      uses: lzghzr/upload-artifact@405e6269d5b1feb22bf2a044deb7950596bed6da
+      with:
+        path: "target/susfs_isolated_hooks.kpm"
+        artifact-per-file: false
+        artifact-name-rule: "susfs-isolated-kpm"
+        
