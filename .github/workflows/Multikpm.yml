@@ -1,3 +1,62 @@
+name: "KO: Do the thing"
+on:
+  push:
+    branches:
+      - main
+      - feature/**
+    paths:
+      - .github/workflows/ko-do-the-thing.yaml
+      - containers/example/**
+jobs:
+  docker-build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+      - name: Authenticate to Google
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: 'my-project'
+          workload_identity_provider: 'projects/123456789/locations/global/workloadIdentityPools/my-pool/providers/my-provider'
+      - name: Setup Go environment
+        uses: actions/setup-go@v5.0.0
+        with:
+          go-version: 1.21.4
+          cache-dependency-path: |
+            containers/do-the-thing/go.sum
+      - name: Ko build
+        uses: userbradley/action-ko-build@v0.0.2
+        with:
+          repository: example
+          googleProject: example-project
+          image: do-the-thing
+          directory: containers/do-the-thing
+          jobs:
+  upload-module:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/upload-artifact@v7
+        with:
+          name: hello-ko
+          path: path/to/hello-ko
+
+  build-module:
+    needs: upload-module
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: feicong/android-kernel-build-action@v2
+        with:
+          tag: android17-6.18
+          arch: aarch64
+          module-path: hello-ko
+          module-name: hello-ko
+          registry: ghcr
 name: Build SUSFS and ZeroMount KPM Modules
 
 on:
