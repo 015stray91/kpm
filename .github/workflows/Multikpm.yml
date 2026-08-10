@@ -28,7 +28,7 @@ jobs:
       - name: Set up NDK Clang Environment
         uses: Ylarod/setup-ndk-clang@v1
         with:
-          ndk-version: r26
+          ndk-version: r26d
 
       - name: Verify Clang Version
         run: clang --version
