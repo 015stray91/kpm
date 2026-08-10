@@ -1,0 +1,86 @@
+name: Build SUSFS and ZeroMount KPM Modules
+
+on:
+  push:
+    paths:
+      - ".github/workflows/build-kpm.yml"
+      - "src/**"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Module Build Version'
+        required: false
+        default: '23040200'
+
+jobs:
+  # JOB 1: Compiles the SUSFS Kernel Hook Module
+  Build-SUSFS-KPM:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout Code Map
+      uses: actions/checkout@v4
+      with:
+        submodules: 'recursive'
+
+    - name: Set up Android NDK Cross-Compiler
+      uses: nndess/setup-ndk@v1
+      with:
+        ndk-version: r25c
+
+    - name: Compile Standalone SUSFS Hook Module
+      run: |
+        mkdir -p target
+        
+        # Point this directly to the folder containing your SUSFS kp_hook code
+        # Example assumes: src/susfs/
+        cd src/susfs/
+        
+        make ARCH=arm64 KERNEL_VERSION=5.10.218
+        mv *.kpm ../../target/susfs_5.10.218.kpm
+
+    - name: Upload SUSFS KPM Artifact
+      if: success()
+      uses: lzghzr/upload-artifact@405e6269d5b1feb22bf2a044deb7950596bed6da
+      with:
+        path: "target/susfs_5.10.218.kpm"
+        artifact-per-file: false
+        artifact-name-rule: "susfs-kpm"
+
+  # JOB 2: Compiles the ZeroMount VFS Redirect Module
+  Build-ZeroMount-KPM:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout Code Map
+      uses: actions/checkout@v4
+      with:
+        submodules: 'recursive'
+
+    - name: Set up Android NDK Cross-Compiler
+      uses: nndess/setup-ndk@v1
+      with:
+        ndk-version: r25c
+
+    - name: Compile Standalone ZeroMount VFS Module
+      run: |
+        mkdir -p target
+        
+        # Point this directly to the folder containing your ZeroMount kp_hook code
+        # Example assumes: src/zeromount/
+        cd src/zeromount/
+        
+        make ARCH=arm64 KERNEL_VERSION=5.10.218
+        mv *.kpm ../../target/zero-mount_5.10.218.kpm
+
+    - name: Upload ZeroMount KPM Artifact
+      if: success()
+      uses: lzghzr/upload-artifact@405e6269d5b1feb22bf2a044deb7950596bed6da
+      with:
+        path: "target/zero-mount_5.10.218.kpm"
+        artifact-per-file: false
+        artifact-name-rule: "zeromount-kpm"
