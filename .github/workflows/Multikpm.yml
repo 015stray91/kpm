@@ -1,63 +1,4 @@
-name: "KO: Do the thing"
-on:
-  push:
-    branches:
-      - main
-      - feature/**
-    paths:
-      - .github/workflows/ko-do-the-thing.yaml
-      - containers/example/**
-jobs:
-  docker-build:
-    name: Docker Build
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      id-token: write
-      contents: read
-    steps:
-      - name: Checkout Repo
-        uses: actions/checkout@v4
-      - name: Authenticate to Google
-        uses: google-github-actions/auth@v2
-        with:
-          project_id: 'my-project'
-          workload_identity_provider: 'projects/123456789/locations/global/workloadIdentityPools/my-pool/providers/my-provider'
-      - name: Setup Go environment
-        uses: actions/setup-go@v5.0.0
-        with:
-          go-version: 1.21.4
-          cache-dependency-path: |
-            containers/do-the-thing/go.sum
-      - name: Ko build
-        uses: userbradley/action-ko-build@v0.0.2
-        with:
-          repository: example
-          googleProject: example-project
-          image: do-the-thing
-          directory: containers/do-the-thing
-          jobs:
-  upload-module:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/upload-artifact@v7
-        with:
-          name: hello-ko
-          path: path/to/hello-ko
-
-  build-module:
-    needs: upload-module
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: feicong/android-kernel-build-action@v2
-        with:
-          tag: android17-6.18
-          arch: aarch64
-          module-path: hello-ko
-          module-name: hello-ko
-          registry: ghcr
-name: Build SUSFS and ZeroMount KPM Modules
+name: Build KSU Next KPM Stack
 
 on:
   push:
@@ -67,79 +8,45 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Module Build Version'
+        description: 'KPM Stack Build Version'
         required: false
         default: '23040200'
 
 jobs:
-  # JOB 1: Compiles the SUSFS Kernel Hook Module
-  Build-SUSFS-KPM:
+  Build-KSU-Next-Stack:
+    name: Compile and Package KPM Modules
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-    - name: Checkout Code Map
-      uses: actions/checkout@v4
-      with:
-        submodules: 'recursive'
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
 
-    - name: Set up Android NDK Cross-Compiler
-      uses: nndess/setup-ndk@v1
-      with:
-        ndk-version: r25c
+      - name: Set up Android NDK Cross-Compiler
+        uses: nndess/setup-ndk@v1
+        with:
+          ndk-version: r25c
 
-    - name: Compile Standalone SUSFS Hook Module
-      run: |
-        mkdir -p target
-        
-        # Point this directly to the folder containing your SUSFS kp_hook code
-        # Example assumes: src/susfs/
-        cd src/susfs/
-        
-        make ARCH=arm64 KERNEL_VERSION=5.10.218
-        mv *.kpm ../../target/susfs_5.10.218.kpm
+      - name: Step 1 - Compile SUSFS KernelSU Next Module
+        run: |
+          mkdir -p target
+          cd src/susfs/
+          make ARCH=arm64 KERNEL_VERSION=5.10.218 CONFIG_KSU_NEXT=y
+          mv *.kpm ../../target/01_susfs_5.10.218.kpm
 
-    - name: Upload SUSFS KPM Artifact
-      if: success()
-      uses: lzghzr/upload-artifact@405e6269d5b1feb22bf2a044deb7950596bed6da
-      with:
-        path: "target/susfs_5.10.218.kpm"
-        artifact-per-file: false
-        artifact-name-rule: "susfs-kpm"
+      - name: Step 2 - Compile ZeroMount KSU Next Module
+        run: |
+          cd src/zeromount/
+          make ARCH=arm64 KERNEL_VERSION=5.10.218 CONFIG_KSU_NEXT=y EXTRA_CFLAGS="-DCONFIG_SUSFS_COMPAT=1"
+          mv *.kpm ../../target/02_zeromount_5.10.218.kpm
 
-  # JOB 2: Compiles the ZeroMount VFS Redirect Module
-  Build-ZeroMount-KPM:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-    - name: Checkout Code Map
-      uses: actions/checkout@v4
-      with:
-        submodules: 'recursive'
-
-    - name: Set up Android NDK Cross-Compiler
-      uses: nndess/setup-ndk@v1
-      with:
-        ndk-version: r25c
-
-    - name: Compile Standalone ZeroMount VFS Module
-      run: |
-        mkdir -p target
-        
-        # Point this directly to the folder containing your ZeroMount kp_hook code
-        # Example assumes: src/zeromount/
-        cd src/zeromount/
-        
-        make ARCH=arm64 KERNEL_VERSION=5.10.218
-        mv *.kpm ../../target/zero-mount_5.10.218.kpm
-
-    - name: Upload ZeroMount KPM Artifact
-      if: success()
-      uses: lzghzr/upload-artifact@405e6269d5b1feb22bf2a044deb7950596bed6da
-      with:
-        path: "target/zero-mount_5.10.218.kpm"
-        artifact-per-file: false
-        artifact-name-rule: "zeromount-kpm"
+      - name: Upload KPM Output Artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kpm-modules-stack-${{ github.event.inputs.version || 'latest' }}
+          path: target/*.kpm
+          
