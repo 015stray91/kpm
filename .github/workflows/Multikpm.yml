@@ -25,10 +25,25 @@ jobs:
         with:
           submodules: 'recursive'
 
-      - name: Set up Android NDK Cross-Compiler
-        uses: android-actions/setup-ndk@v3
+      - name: Set up NDK Clang Environment
+        uses: Ylarod/setup-ndk-clang@v1
         with:
-          ndk-version: r25c
+          ndk-version: r26
+
+      - shell: bash
+        name: Create Toolchains Directory
+        run: mkdir -p toolchains
+
+      - name: Specify NDK Toolchain Setup
+        uses: ravinderjangra/android-ndk-toolchain-setup@0.2
+        with:
+          api: '21'
+          arch: 'x86'
+          install-location: 'toolchains'
+          force: true
+
+      - name: Verify Clang Version
+        run: clang --version
 
       - name: Step 1 - Compile SUSFS KernelSU Next Module
         run: |
